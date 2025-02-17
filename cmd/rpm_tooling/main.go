@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -94,9 +96,28 @@ func rpmTooling(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Created temp dir at: %s\n", mainDir)
 
 	if result.Contents == nil {
-    for _, v := range rpms {
-      if err != copyFi
-    }
+		for _, v := range rpms {
+			original, err := os.Open(v)
+			if err != nil {
+				log.Fatalf("Unable to open file in %s: %v", v, err)
+			}
+			defer original.Close()
+
+			newFile, err := os.Create(fmt.Sprintf("%s/%s", mainDir, filepath.Base(v)))
+			if err != nil {
+				log.Fatalf("Unable to create file in new dir in %s: %v", mainDir, err)
+			}
+			defer newFile.Close()
+
+			_, err = io.Copy(newFile, original)
+			if err != nil {
+				log.Fatalf("Unable to copy content from file %s to %s: %v", original.Name(), newFile.Name(), err)
+			}
+		}
+
+		if err := os.Mkdir(fmt.Sprintf("%s/%s", mainDir, "repodata"), 0o777); err != nil {
+			log.Fatalf("Unable to create %s/repodata: %v", mainDir, "repodata")
+		}
 
 	} else if len(result.Contents) > 0 {
 		for i, v := range result.Contents {
