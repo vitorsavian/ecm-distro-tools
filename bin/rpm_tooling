@@ -158,7 +158,7 @@ def update_repodata(rpmfiles, options):
         subprocess.run(cmd_merge, check=True)
         merged_repodata_dir = os.path.join(merged_repo_dir, "repodata")
         logging.info("Uploading merged repodata to S3...")
-        grabber.upload_dir(merged_repodata_dir, "repodata")
+        grabber.upload_dir(merged_repodata_dir, "repodata", options.sign_pass)
     else:
         logging.info("Uploading new repo (no old repo to merge).")
         grabber.upload_dir(repodata_new, "repodata", options.sign_pass)
