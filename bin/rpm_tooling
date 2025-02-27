@@ -161,7 +161,7 @@ def update_repodata(rpmfiles, options):
         grabber.upload_dir(merged_repodata_dir, "repodata")
     else:
         logging.info("Uploading new repo (no old repo to merge).")
-        grabber.upload_dir(repodata_new, "repodata")
+        grabber.upload_dir(repodata_new, "repodata", options.sign_pass)
 
     for rpm in rpmfiles:
         basename = os.path.basename(rpm)
