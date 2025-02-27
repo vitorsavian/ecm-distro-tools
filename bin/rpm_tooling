@@ -70,9 +70,10 @@ def sign_repo(repomd_path, password=None):
         command = f"""
 expect -c 'set timeout 60;
 spawn gpg --detach-sign --armor {repomd_path};
-expect "Passphrase:";
-send "{password}\\r";
-expect eof;'
+expect "Enter pass phrase:"
+send -- "$PRIVATE_KEY_PASS_PHRASE\r"
+expect eof
+lassign [wait] _ _ _ code
 """
         subprocess.run(command, shell=True, check=True)
     else:
@@ -86,9 +87,10 @@ def sign_rpm(rpm_path, password=None):
         command = f"""
 expect -c 'set timeout 60;
 spawn rpmsign --addsign {rpm_path};
-expect "Passphrase:";
-send "{password}\\r";
-expect eof;'
+expect "Enter pass phrase:"
+send -- "$PRIVATE_KEY_PASS_PHRASE\r"
+expect eof
+lassign [wait] _ _ _ code
 """
         subprocess.run(command, shell=True, check=True)
     else:
