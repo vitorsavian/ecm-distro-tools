@@ -71,7 +71,7 @@ def sign_repo(repomd_path, password=None):
 expect -c 'set timeout 60;
 spawn gpg --detach-sign --armor {repomd_path};
 expect "Enter pass phrase:"
-send -- "$PRIVATE_KEY_PASS_PHRASE\r"
+send -- "{password}\r"
 expect eof
 lassign [wait] _ _ _ code
 """
@@ -88,7 +88,7 @@ def sign_rpm(rpm_path, password=None):
 expect -c 'set timeout 60;
 spawn rpmsign --addsign {rpm_path};
 expect "Enter pass phrase:"
-send -- "$PRIVATE_KEY_PASS_PHRASE\r"
+send -- "{password}\r"
 expect eof
 lassign [wait] _ _ _ code
 """
