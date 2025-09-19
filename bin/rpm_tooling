@@ -169,7 +169,7 @@ def update_repodata(rpmfiles, options):
             "mergerepo_c",
             f"--repo={old_repo_dir}",
             f"--repo={new_repo_dir}",
-            "--all",
+            "--method=nvr",
             "--omit-baseurl",
             "-o", merged_repo_dir
         ]
