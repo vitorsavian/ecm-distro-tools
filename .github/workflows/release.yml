@@ -21,24 +21,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload -R ${{ github.repository }} ${{ github.ref_name }} ${{ github.workspace }}/dist/* --clobber
-      - name: Load Secrets from Vault
-        uses: rancher-eio/read-vault-secrets@main
-        with:
-          secrets: |
-            secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials username | DOCKERHUB_USERNAME;
-            secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials password | DOCKERHUB_TOKEN;
-      - name: Publish manifest
-        uses: ./actions/publish-image
-        with:
-          image: ecm-distro-tools
-          tag: ${{ github.ref_name }}
-          platforms: ${{ matrix.platforms }}
+      # - name: Load Secrets from Vault
+      #   uses: rancher-eio/read-vault-secrets@main
+      #   with:
+      #     secrets: |
+      #       secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials username | DOCKERHUB_USERNAME;
+      #       secret/data/github/repo/${{ github.repository }}/dockerhub/rancher/credentials password | DOCKERHUB_TOKEN;
+      # - name: Publish manifest
+      #   uses: ./actions/publish-image
+      #   with:
+      #     image: ecm-distro-tools
+      #     tag: ${{ github.ref_name }}
+      #     platforms: ${{ matrix.platforms }}
 
-          push-to-public: false
+      #     push-to-public: false
 
-          # This project is for internal use only, therefore we can treat
-          # Docker as its Prime registry.
-          prime-registry: docker.io
-          prime-repo: rancher
-          prime-username: ${{ env.DOCKERHUB_USERNAME }}
-          prime-password: ${{ env.DOCKERHUB_TOKEN }}
+      #     # This project is for internal use only, therefore we can treat
+      #     # Docker as its Prime registry.
+      #     prime-registry: docker.io
+      #     prime-repo: rancher
+      #     prime-username: ${{ env.DOCKERHUB_USERNAME }}
+      #     prime-password: ${{ env.DOCKERHUB_TOKEN }}
