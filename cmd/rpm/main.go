@@ -414,23 +414,25 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	rpms, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+	items, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
 	if err != nil {
 		return err
 	}
 
-	for _, rpm := range rpms {
-		logrus.Infof("Found existing RPM in S3: %s", *rpm.Key)
+	var repodata []types.Object
+	var rpms []types.Object
 
-		if slices.Contains(rpmCmdOpts.RpmFiles, filepath.Base(*rpm.Key)) {
-			return fmt.Errorf("RPM %s already exists in S3 bucket %s with prefix %s", filepath.Base(*rpm.Key), rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+	for _, item := range items {
+		logrus.Infof("Found existing item in S3: %s", *item.Key)
+		if strings.Contains(*item.Key, "/repodata/") {
+			repodata = append(repodata, item)
+		} else {
+			if slices.Contains(rpmCmdOpts.RpmFiles, filepath.Base(*item.Key)) {
+				return fmt.Errorf("RPM %s already exists in S3 bucket %s with prefix %s", filepath.Base(*item.Key), rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+			}
+
+			rpms = append(rpms, item)
 		}
-
-	}
-
-	repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"/repodata")
-	if err != nil {
-		return err
 	}
 
 	if err := os.MkdirAll(oldRepoPath, 0777); err != nil {
