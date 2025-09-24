@@ -139,7 +139,7 @@ func uploadS3Object(client *s3.Client, bucket, key, localPath string, visibility
 	return nil
 }
 
-func uploadDirectory(client *s3.Client, bucket, prefix, localDir, visibility string) error {
+func uploadDirectory(client *s3.Client, bucket, prefix, localDir, visibility string, rebuild bool) error {
 	return filepath.WalkDir(localDir, func(path string, info os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -152,6 +152,12 @@ func uploadDirectory(client *s3.Client, bucket, prefix, localDir, visibility str
 		relativePath, err := filepath.Rel(localDir, path)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		if rebuild && strings.Contains(relativePath, ".rpm") {
+			// Skip RPM files during rebuild to avoid unnecessary uploads
+			logrus.Infof("Skipping upload of %s during rebuild", relativePath)
+			return nil
 		}
 
 		s3Key := relativePath
@@ -306,7 +312,7 @@ func rebuild(client *s3.Client, rpms []types.Object, repodata []types.Object) er
 		}
 
 		// first we upload and after that the tool will delete the unnecessary items that we got in the list
-		if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility); err != nil {
+		if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility, rpmCmdOpts.Rebuild); err != nil {
 			return err
 		}
 
@@ -372,7 +378,7 @@ func mergerepo(client *s3.Client, repodata []types.Object, newRpms []string) err
 	}
 
 	// first we upload and after that the tool will delete the unnecessary items that we got in the list
-	if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility); err != nil {
+	if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility, rpmCmdOpts.Rebuild); err != nil {
 		return err
 	}
 
@@ -496,7 +502,7 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility)
+	return uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility, rpmCmdOpts.Rebuild)
 }
 
 func main() {
