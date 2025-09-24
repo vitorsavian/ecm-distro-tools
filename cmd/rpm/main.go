@@ -31,6 +31,7 @@ type RpmCmdOpts struct {
 	Visibility   string
 	AwsAccessKey string
 	AwsSecretKey string
+	AwsRegion    string
 	Sign         bool
 	SignPass     string
 	RpmFiles     []string
@@ -87,11 +88,19 @@ exit $code
 	}
 }
 
-func createS3Client(accessKey, secretKey string) (*s3.Client, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
+func createS3Client(accessKey, secretKey, region string) (*s3.Client, error) {
+	configOpts := []func(*config.LoadOptions) error{
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-		// config.WithDefaultRegion("us-east-1"),
-	)
+	}
+
+	// Se região foi especificada, usa ela. Senão usa us-east-1 como padrão
+	if region != "" {
+		configOpts = append(configOpts, config.WithDefaultRegion(region))
+	} else {
+		configOpts = append(configOpts, config.WithDefaultRegion("us-east-1"))
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(), configOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %v", err)
 	}
@@ -288,7 +297,7 @@ func copyFile(src, dst string) error {
 func rpmTool(cmd *cobra.Command, args []string) error {
 	rpmCmdOpts.RpmFiles = args
 
-	client, err := createS3Client(rpmCmdOpts.AwsAccessKey, rpmCmdOpts.AwsSecretKey)
+	client, err := createS3Client(rpmCmdOpts.AwsAccessKey, rpmCmdOpts.AwsSecretKey, rpmCmdOpts.AwsRegion)
 	if err != nil {
 		return err
 	}
@@ -459,6 +468,7 @@ func main() {
 	cmd.Flags().StringVar(&rpmCmdOpts.AwsAccessKey, "aws-access-key", "", "AWS Access Key ID")
 	cmd.Flags().StringVar(&rpmCmdOpts.AwsSecretKey, "aws-secret-key", "", "AWS Secret Access Key")
 	cmd.Flags().BoolVar(&rpmCmdOpts.Sign, "sign", false, "Sign RPMs with rpmsign")
+	cmd.Flags().StringVar(&rpmCmdOpts.AwsRegion, "aws-region", "us-east-1", "AWS Region")
 	cmd.Flags().StringVar(&rpmCmdOpts.SignPass, "sign-pass", "", "Passphrase for signing (can be empty)")
 	cmd.Flags().BoolVar(&rpmCmdOpts.Rebuild, "rebuild", false, "Rebuild the repository metadata")
 
