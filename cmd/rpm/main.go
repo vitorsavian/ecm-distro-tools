@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -414,6 +413,10 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if err := os.MkdirAll(newRepoPath, 0777); err != nil {
+		return err
+	}
+
 	items, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
 	if err != nil {
 		return err
@@ -427,19 +430,11 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		if strings.Contains(*item.Key, "/repodata/") {
 			repodata = append(repodata, item)
 		} else {
-			if slices.Contains(rpmCmdOpts.RpmFiles, filepath.Base(*item.Key)) {
-				return fmt.Errorf("RPM %s already exists in S3 bucket %s with prefix %s", filepath.Base(*item.Key), rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
-			}
-
 			rpms = append(rpms, item)
 		}
 	}
 
 	if err := os.MkdirAll(oldRepoPath, 0777); err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(newRepoPath, 0777); err != nil {
 		return err
 	}
 
@@ -460,7 +455,14 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		// verify if the RPM already exists in S3 and stops the process if it does
 		basename := filepath.Base(rpmFile)
+		for _, rpm := range rpms {
+			if filepath.Base(*rpm.Key) == basename {
+				return fmt.Errorf("RPM %s already exists in S3 bucket %s with prefix %s", basename, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+			}
+		}
+
 		localDest := filepath.Join(newRepoPath, basename)
 		logrus.Infof("Copying %s to %s", rpmFile, localDest)
 		newRpms = append(newRpms, localDest)
