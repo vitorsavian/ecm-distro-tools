@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -93,7 +94,6 @@ func createS3Client(accessKey, secretKey, region string) (*s3.Client, error) {
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
 	}
 
-	// Se região foi especificada, usa ela. Senão usa us-east-1 como padrão
 	if region != "" {
 		configOpts = append(configOpts, config.WithDefaultRegion(region))
 	} else {
@@ -221,29 +221,6 @@ func listS3Objects(client *s3.Client, bucket, prefix string) ([]types.Object, er
 	return objects, nil
 }
 
-func deleteS3Folder(client *s3.Client, bucket, folderPrefix string) error {
-	logrus.Infof("Listing objects in folder: %s", folderPrefix)
-
-	objects, err := listS3Objects(client, bucket, folderPrefix)
-	if err != nil {
-		return fmt.Errorf("failed to list objects in folder %s: %w", folderPrefix, err)
-	}
-
-	if len(objects) == 0 {
-		logrus.Infof("No objects found in folder: %s", folderPrefix)
-		return nil
-	}
-
-	var keys []string
-	for _, obj := range objects {
-		keys = append(keys, *obj.Key)
-	}
-
-	logrus.Infof("Found %d objects to delete in folder: %s", len(keys), folderPrefix)
-
-	return deleteS3Objects(client, bucket, keys)
-}
-
 func downloadS3Object(client *s3.Client, bucket, key, localPath string) error {
 	ctx := context.TODO()
 
@@ -297,24 +274,6 @@ func copyFile(src, dst string) error {
 func rpmTool(cmd *cobra.Command, args []string) error {
 	rpmCmdOpts.RpmFiles = args
 
-	// Log all the flags that were set
-	logrus.Info("=== RPM Tool Configuration ===")
-	logrus.Infof("Bucket: %s", rpmCmdOpts.Bucket)
-	logrus.Infof("Prefix: %s", rpmCmdOpts.Prefix)
-	logrus.Infof("AWS Region: %s", rpmCmdOpts.AwsRegion)
-	logrus.Infof("Sign RPMs: %t", rpmCmdOpts.Sign)
-	if rpmCmdOpts.SignPass != "" {
-		logrus.Info("Sign Passphrase: [PROVIDED]")
-	} else {
-		logrus.Info("Sign Passphrase: [NOT PROVIDED]")
-	}
-	logrus.Infof("Rebuild Mode: %t", rpmCmdOpts.Rebuild)
-	logrus.Infof("RPM Files Count: %d", len(rpmCmdOpts.RpmFiles))
-	for i, rpm := range rpmCmdOpts.RpmFiles {
-		logrus.Infof("  RPM %d: %s", i+1, rpm)
-	}
-	logrus.Info("=== End Configuration ===")
-
 	client, err := createS3Client(rpmCmdOpts.AwsAccessKey, rpmCmdOpts.AwsSecretKey, rpmCmdOpts.AwsRegion)
 	if err != nil {
 		return err
@@ -360,12 +319,26 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			logrus.Info("Deleting old repodata from S3.")
-			if err := deleteS3Folder(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"repodata"); err != nil {
+			// first we upload and after that the tool will delete the unnecessary items that we got in the list
+			if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility); err != nil {
 				return err
 			}
 
-			uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility)
+			var keysToDelete []string
+			for _, item := range repodata {
+				if strings.Contains(*item.Key, "repomd") {
+					logrus.Infof("Skipping deletion of repomd file: %s", *item.Key)
+					continue
+				}
+
+				keysToDelete = append(keysToDelete, *item.Key)
+			}
+
+			logrus.Infof("Deleting old repodata files from S3: %v", keysToDelete)
+			if err := deleteS3Objects(client, rpmCmdOpts.Bucket, keysToDelete); err != nil {
+				return err
+			}
+
 		} else {
 			logrus.Info("No existing RPMs found in S3.")
 		}
@@ -420,7 +393,7 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		logrus.Info("Running createrepo_c for old + new RPMs.")
+		logrus.Info("Creating mergepo folder to merge old + new repos")
 		if err := os.MkdirAll(mergedRepoPath, 0777); err != nil {
 			return err
 		}
@@ -449,12 +422,26 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		logrus.Info("Deleting old repodata from S3.")
-		if err := deleteS3Folder(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"repodata"); err != nil {
+		// first we upload and after that the tool will delete the unnecessary items that we got in the list
+		if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility); err != nil {
 			return err
 		}
 
-		uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility)
+		var keysToDelete []string
+		for _, item := range repodata {
+			if strings.Contains(*item.Key, "repomd") {
+				logrus.Infof("Skipping deletion of repomd file: %s", *item.Key)
+				continue
+			}
+
+			keysToDelete = append(keysToDelete, *item.Key)
+		}
+
+		logrus.Infof("Deleting old repodata files from S3: %v", keysToDelete)
+		if err := deleteS3Objects(client, rpmCmdOpts.Bucket, keysToDelete); err != nil {
+			return err
+		}
+
 	} else {
 		logrus.Info("No existing repodata found in S3. Uploading new RPMs and repodata.")
 
