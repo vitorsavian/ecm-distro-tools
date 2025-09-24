@@ -428,8 +428,6 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 
 	}
 
-	return nil
-
 	repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"/repodata")
 	if err != nil {
 		return err
