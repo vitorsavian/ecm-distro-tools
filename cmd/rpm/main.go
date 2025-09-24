@@ -54,7 +54,7 @@ expect eof
 lassign [wait] _ _ _ code
 exit $code
 '
-`, repoPath, password)
+`, repomdPath, password)
 
 		logrus.Infof("Signing %s (interactive passphrase).", repomdPath)
 		cmd := exec.Command("bash", "-c", command)
