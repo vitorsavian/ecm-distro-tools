@@ -297,6 +297,24 @@ func copyFile(src, dst string) error {
 func rpmTool(cmd *cobra.Command, args []string) error {
 	rpmCmdOpts.RpmFiles = args
 
+	// Log all the flags that were set
+	logrus.Info("=== RPM Tool Configuration ===")
+	logrus.Infof("Bucket: %s", rpmCmdOpts.Bucket)
+	logrus.Infof("Prefix: %s", rpmCmdOpts.Prefix)
+	logrus.Infof("AWS Region: %s", rpmCmdOpts.AwsRegion)
+	logrus.Infof("Sign RPMs: %t", rpmCmdOpts.Sign)
+	if rpmCmdOpts.SignPass != "" {
+		logrus.Info("Sign Passphrase: [PROVIDED]")
+	} else {
+		logrus.Info("Sign Passphrase: [NOT PROVIDED]")
+	}
+	logrus.Infof("Rebuild Mode: %t", rpmCmdOpts.Rebuild)
+	logrus.Infof("RPM Files Count: %d", len(rpmCmdOpts.RpmFiles))
+	for i, rpm := range rpmCmdOpts.RpmFiles {
+		logrus.Infof("  RPM %d: %s", i+1, rpm)
+	}
+	logrus.Info("=== End Configuration ===")
+
 	client, err := createS3Client(rpmCmdOpts.AwsAccessKey, rpmCmdOpts.AwsSecretKey, rpmCmdOpts.AwsRegion)
 	if err != nil {
 		return err
