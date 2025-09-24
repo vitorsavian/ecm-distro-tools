@@ -289,14 +289,14 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 
 	if rpmCmdOpts.Rebuild {
 		logrus.Info("Rebuild mode enabled. Clearing old, new, and merged repository directories.")
-		repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+		rpms, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
 		if err != nil {
 			return err
 		}
 
-		if len(repodata) > 0 {
-			logrus.Infof("Found %d items in S3 bucket %s with prefix %s", len(repodata), rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
-			for _, item := range repodata {
+		if len(rpms) > 0 {
+			logrus.Infof("Found %d items in S3 bucket %s with prefix %s", len(rpms), rpmCmdOpts.Bucket, rpmCmdOpts.Prefix)
+			for _, item := range rpms {
 				relativePath := *item.Key
 
 				// this is for when prefix is set, mostly to avoid the need to handle newRepoPath+prefix+"/"+file in newRepoPath
@@ -319,8 +319,14 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 				}
 			}
 
+			// get the list of repodata files to delete later and clean the repodata
+			repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"/repodata")
+			if err != nil {
+				return err
+			}
+
 			// first we upload and after that the tool will delete the unnecessary items that we got in the list
-			if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility); err != nil {
+			if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, newRepoPath, rpmCmdOpts.Visibility); err != nil {
 				return err
 			}
 
@@ -350,6 +356,7 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		return errors.New("at least one RPM file must be provided")
 	}
 
+	var destRpms []string
 	for _, rpmFile := range rpmCmdOpts.RpmFiles {
 		if rpmCmdOpts.Sign {
 			logrus.Infof("Signing %s", rpmFile)
@@ -361,6 +368,7 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		basename := filepath.Base(rpmFile)
 		localDest := filepath.Join(newRepoPath, basename)
 		logrus.Infof("Copying %s to %s", rpmFile, localDest)
+		destRpms = append(destRpms, localDest)
 		if err := copyFile(rpmFile, localDest); err != nil {
 			return err
 		}
@@ -425,6 +433,17 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		// first we upload and after that the tool will delete the unnecessary items that we got in the list
 		if err := uploadDirectory(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix, mergedRepoPath, rpmCmdOpts.Visibility); err != nil {
 			return err
+		}
+
+		for _, rpm := range destRpms {
+			s3Key := filepath.Base(rpm)
+			if rpmCmdOpts.Prefix != "" {
+				s3Key = rpmCmdOpts.Prefix + "/" + s3Key
+			}
+
+			if err := uploadS3Object(client, rpmCmdOpts.Bucket, s3Key, rpm, rpmCmdOpts.Visibility); err != nil {
+				return err
+			}
 		}
 
 		var keysToDelete []string
