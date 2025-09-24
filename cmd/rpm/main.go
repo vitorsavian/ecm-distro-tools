@@ -90,7 +90,7 @@ exit $code
 func createS3Client(accessKey, secretKey string) (*s3.Client, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-		config.WithDefaultRegion("us-east-1"),
+		// config.WithDefaultRegion("us-east-1"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %v", err)
@@ -195,10 +195,7 @@ func listS3Objects(client *s3.Client, bucket, prefix string) ([]types.Object, er
 
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
-	}
-
-	if prefix != "" {
-		input.Prefix = aws.String(prefix)
+		Prefix: aws.String(prefix),
 	}
 
 	var objects []types.Object
