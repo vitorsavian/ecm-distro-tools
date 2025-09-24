@@ -378,7 +378,7 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 	logrus.Infof("Repodata created at: %s", repodataNew)
 	logrus.Infof("Repomd.xml location: %s", repomdNew)
 
-	repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"repodata")
+	repodata, err := listS3Objects(client, rpmCmdOpts.Bucket, rpmCmdOpts.Prefix+"/repodata")
 	if err != nil {
 		return err
 	}
