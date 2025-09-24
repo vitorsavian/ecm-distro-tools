@@ -454,13 +454,6 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 
 	var newRpms []string
 	for _, rpmFile := range rpmCmdOpts.RpmFiles {
-		if rpmCmdOpts.Sign {
-			logrus.Infof("Signing %s", rpmFile)
-			if err := sign(rpmCmdOpts.SignPass, rpmFile); err != nil {
-				return err
-			}
-		}
-
 		// verify if the RPM already exists in S3 and stops the process if it does
 		basename := filepath.Base(rpmFile)
 		for _, rpm := range rpms {
@@ -474,6 +467,25 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 		newRpms = append(newRpms, localDest)
 		if err := copyFile(rpmFile, localDest); err != nil {
 			return err
+		}
+
+		// Sign RPMs if the sign flag is set
+		if rpmCmdOpts.Sign {
+			logrus.Infof("Signing %s", rpmFile)
+			if err := sign(rpmCmdOpts.SignPass, rpmFile); err != nil {
+				return err
+			}
+
+			// Verificar se foi assinado
+			cmd := exec.Command("rpm", "-qpi", rpmFile)
+			output, err := cmd.Output()
+			if err == nil {
+				if strings.Contains(string(output), "Signature") {
+					logrus.Infof("RPM %s successfully signed", filepath.Base(rpmFile))
+				} else {
+					logrus.Warnf("RPM %s may not be properly signed", filepath.Base(rpmFile))
+				}
+			}
 		}
 	}
 
