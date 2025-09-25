@@ -85,7 +85,7 @@ exit $code
 		return cmd.Run()
 	} else {
 		logrus.Infof("Signing %s (interactive passphrase).", rpmPath)
-		cmd := exec.Command("rpm", "--addsign", rpmPath)
+		cmd := exec.Command("rpmsign", "--addsign", rpmPath)
 		return cmd.Run()
 	}
 }
@@ -480,6 +480,22 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 			cmd := exec.Command("rpm", "-qpi", localDest)
 			output, err := cmd.Output()
 			if err == nil {
+				lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+				logrus.Info("=== RPM Package Info ===")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line != "" {
+						if strings.Contains(line, "Name") ||
+							strings.Contains(line, "Version") ||
+							strings.Contains(line, "Signature") ||
+							strings.Contains(line, "Build Date") {
+							logrus.Infof("  %s", line)
+						}
+					}
+				}
+				logrus.Info("=== End RPM Info ===")
+
 				if strings.Contains(string(output), "Signature") {
 					logrus.Infof("RPM %s successfully signed", filepath.Base(localDest))
 				} else {
