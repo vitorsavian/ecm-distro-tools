@@ -82,12 +82,20 @@ exit $code
 '
 `, rpmPath, password)
 		cmd := exec.Command("bash", "-c", command)
-		return cmd.Run()
+		out, err := cmd.CombinedOutput()
+
+		logrus.Infof("----- BEGIN rpmsign OUTPUT (%s) -----\n%s\n----- END rpmsign OUTPUT (%s) -----",
+			filepath.Base(rpmPath), string(out), filepath.Base(rpmPath))
+		if err != nil {
+			return fmt.Errorf("rpmsign failed for %s: %v", rpmPath, err)
+		}
 	} else {
 		logrus.Infof("Signing %s (interactive passphrase).", rpmPath)
 		cmd := exec.Command("rpmsign", "--addsign", rpmPath)
 		return cmd.Run()
 	}
+
+	return nil
 }
 
 func createS3Client(accessKey, secretKey, region string) (*s3.Client, error) {
