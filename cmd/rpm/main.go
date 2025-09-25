@@ -471,19 +471,19 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 
 		// Sign RPMs if the sign flag is set
 		if rpmCmdOpts.Sign {
-			logrus.Infof("Signing %s", rpmFile)
-			if err := sign(rpmCmdOpts.SignPass, rpmFile); err != nil {
+			logrus.Infof("Signing %s", localDest)
+			if err := sign(rpmCmdOpts.SignPass, localDest); err != nil {
 				return err
 			}
 
 			// Verificar se foi assinado
-			cmd := exec.Command("rpm", "-qpi", rpmFile)
+			cmd := exec.Command("rpm", "-qpi", localDest)
 			output, err := cmd.Output()
 			if err == nil {
 				if strings.Contains(string(output), "Signature") {
-					logrus.Infof("RPM %s successfully signed", filepath.Base(rpmFile))
+					logrus.Infof("RPM %s successfully signed", filepath.Base(localDest))
 				} else {
-					logrus.Warnf("RPM %s may not be properly signed", filepath.Base(rpmFile))
+					logrus.Warnf("RPM %s may not be properly signed", filepath.Base(localDest))
 				}
 			}
 		}
