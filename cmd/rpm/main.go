@@ -103,25 +103,35 @@ func signRepo(password, repoPath string) error {
 }
 
 func sign(password, rpmPath string) error {
-	if password != "" {
-		command := fmt.Sprintf(`
-expect -c '
-set timeout 60
-spawn rpmsign --addsign %s
-expect -re "Enter passphrase.*"
-send -- "%s\r"
-expect eof
-lassign [wait] _ _ _ code
-exit $code
-'
-`, rpmPath, password)
-		cmd := exec.Command("bash", "-c", command)
-		return cmd.Run()
-	} else {
-		logrus.Infof("Signing %s without password", rpmPath)
+	if password == "" {
 		cmd := exec.Command("rpmsign", "--addsign", rpmPath)
-		return cmd.Run()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("rpmsign (no-pass) failed: %v: %s", err, string(out))
+		}
+		return nil
 	}
+
+	cmd := exec.Command(
+		"rpmsign", "--addsign", rpmPath,
+	)
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
+
+	go func() {
+		stdin.Write([]byte(password + "\n"))
+		stdin.Close()
+	}()
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rpmsign failed: %v: %s", err, string(out))
+	}
+
+	return nil
 }
 
 func createS3Client(accessKey, secretKey, region string) (*s3.Client, error) {
@@ -510,32 +520,42 @@ func rpmTool(cmd *cobra.Command, args []string) error {
 				return err
 			}
 
-			// Verify the signature
-			cmd := exec.Command("rpm", "-qpi", localDest)
-			output, err := cmd.Output()
-			if err == nil {
-				lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+			// Verify rpm
+			cmd := exec.Command("rpm", "-qp", "--qf", `
+			Name: %{NAME}\n
+			Version: %{VERSION}\n
+			Release: %{RELEASE}\n
+			Signature: %{SIGNATURE}\n
+			`, localDest)
 
-				logrus.Info("=== RPM Package Info ===")
-				for _, line := range lines {
-					line = strings.TrimSpace(line)
-					if line != "" {
-						if strings.Contains(line, "Name") ||
-							strings.Contains(line, "Version") ||
-							strings.Contains(line, "Signature") ||
-							strings.Contains(line, "Build Date") {
-							logrus.Infof("  %s", line)
-						}
+			output, err := cmd.Output()
+			if err != nil {
+				logrus.Errorf("Failed to verify RPM %s: %v", filepath.Base(localDest), err)
+				continue
+			}
+
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+
+			logrus.Info("=== RPM Package Info ===")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					if strings.Contains(line, "Name") ||
+						strings.Contains(line, "Version") ||
+						strings.Contains(line, "Signature") ||
+						strings.Contains(line, "Release") {
+						logrus.Infof("  %s", line)
 					}
 				}
-				logrus.Info("=== End RPM Info ===")
-
-				if strings.Contains(string(output), "Signature") {
-					logrus.Infof("RPM %s successfully signed", filepath.Base(localDest))
-				} else {
-					logrus.Warnf("RPM %s may not be properly signed", filepath.Base(localDest))
-				}
 			}
+			logrus.Info("=== End RPM Info ===")
+
+			if strings.Contains(string(output), "Signature") {
+				logrus.Infof("RPM %s successfully signed", filepath.Base(localDest))
+			} else {
+				logrus.Warnf("RPM %s may not be properly signed", filepath.Base(localDest))
+			}
+
 		}
 	}
 
