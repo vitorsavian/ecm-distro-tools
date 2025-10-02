@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	openpgp "github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -35,6 +36,7 @@ type RpmCmdOpts struct {
 	AwsSecretKey string
 	AwsRegion    string
 	Sign         bool
+	SignKey      string
 	SignPass     string
 	RpmFiles     []string
 	Rebuild      bool
@@ -44,28 +46,60 @@ var rpmCmdOpts RpmCmdOpts
 
 func signRepo(password, repoPath string) error {
 	repomdPath := fmt.Sprintf("%s/repodata/repomd.xml", repoPath)
-
-	if password != "" {
-		command := fmt.Sprintf(`
-expect -c '
-set timeout 60
-spawn gpg --pinentry-mode loopback --force-v3-sigs --verbose --detach-sign --armor %s
-expect -re "Enter passphrase.*"
-send -- "%s\r"
-expect eof
-lassign [wait] _ _ _ code
-exit $code
-'
-`, repomdPath, password)
-
-		logrus.Infof("Signing %s (interactive passphrase).", repomdPath)
-		cmd := exec.Command("bash", "-c", command)
-		return cmd.Run()
-	} else {
-		logrus.Infof("Signing %s without password", repomdPath)
-		cmd := exec.Command("gpg", "--detach-sign", "--armor", repomdPath)
-		return cmd.Run()
+	keyData, err := os.ReadFile(rpmCmdOpts.SignKey)
+	if err != nil {
+		return fmt.Errorf("failed to read GPG private key file: %v", err)
 	}
+
+	key, err := openpgp.NewKeyFromArmored(string(keyData))
+	if err != nil {
+		return fmt.Errorf("failed to parse GPG private key: %v", err)
+	}
+
+	locked, err := key.IsLocked()
+	if err != nil {
+		return fmt.Errorf("failed to check if GPG private key is locked: %v", err)
+	}
+
+	if locked {
+		if password == "" {
+			return errors.New("GPG private key is locked but no passphrase was provided")
+		}
+
+		key, err = key.Unlock([]byte(password))
+		if err != nil {
+			return fmt.Errorf("failed to unlock GPG private key: %v", err)
+		}
+	}
+
+	keyRing, err := openpgp.NewKeyRing(key)
+	if err != nil {
+		return fmt.Errorf("failed to create key ring: %v", err)
+	}
+
+	repomdData, err := os.ReadFile(repomdPath)
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %v", repomdPath, err)
+	}
+
+	signature, err := keyRing.SignDetached(openpgp.NewPlainMessage(repomdData))
+	if err != nil {
+		return fmt.Errorf("failed to sign %s: %v", repomdPath, err)
+	}
+
+	sigPath := repomdPath + ".asc"
+
+	armor, err := signature.GetArmored()
+	if err != nil {
+		return fmt.Errorf("failed to get armored signature: %v", err)
+	}
+
+	logrus.Infof("Writing signature to %s", sigPath)
+	if err := os.WriteFile(sigPath, []byte(armor), 0644); err != nil {
+		return fmt.Errorf("failed to write signature to %s: %v", sigPath, err)
+	}
+
+	return nil
 }
 
 func sign(password, rpmPath string) error {
@@ -550,6 +584,7 @@ func main() {
 	cmd.Flags().BoolVar(&rpmCmdOpts.Sign, "sign", false, "Sign RPMs with rpmsign")
 	cmd.Flags().StringVar(&rpmCmdOpts.AwsRegion, "aws-region", "us-east-1", "AWS Region")
 	cmd.Flags().StringVar(&rpmCmdOpts.SignPass, "sign-pass", "", "Passphrase for signing (can be empty)")
+	cmd.Flags().StringVar(&rpmCmdOpts.SignKey, "sign-key", "", "Path to the GPG private key file")
 	cmd.Flags().BoolVar(&rpmCmdOpts.Rebuild, "rebuild", false, "Rebuild the repository metadata")
 
 	if err := cmd.MarkFlagRequired("bucket"); err != nil {
